@@ -1,0 +1,47 @@
+name: Levi's price tracker
+run-name: Sprawdzanie ceny (${{ github.event_name }})
+
+on:
+  schedule:
+    - cron: "0 6 * * *"   # codziennie 06:00 UTC (07:00/08:00 w Polsce, zależnie od czasu letniego)
+  workflow_dispatch:       # ręczne uruchomienie z zakładki Actions
+
+permissions:
+  contents: write          # potrzebne do commitowania historii cen
+
+concurrency:
+  group: price-tracker
+  cancel-in-progress: false
+
+jobs:
+  check-price:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          playwright install --with-deps chromium
+
+      - name: Run price tracker
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          TARGET_PRICE: ${{ vars.TARGET_PRICE }}
+        run: python levis_price_tracker.py
+
+      - name: Commit price history
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add levis_price_history.csv
+          git diff --cached --quiet || git commit -m "Update price history"
+          git push
